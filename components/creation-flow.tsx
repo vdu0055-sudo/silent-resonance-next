@@ -294,34 +294,35 @@ export default function CreationFlow({
 
             <div className="creation-preview-field mt-4 flex items-center justify-center rounded-[1.7rem] border border-white/[0.07] px-3 py-3">
               <div className="creation-preview-core relative flex h-[14.75rem] w-full max-w-[16rem] items-center justify-center overflow-hidden rounded-[1.6rem]">
-                <div className="absolute inset-[8%] rounded-full border border-white/[0.06]" />
-                <div className="absolute inset-[21%] rounded-full border border-white/[0.05]" />
-                <div className="absolute inset-[34%] rounded-full border border-white/[0.04]" />
-                <div className="creation-orbit creation-orbit-a absolute inset-[12%] rounded-full border border-white/[0.05]" />
-                <div className="creation-orbit creation-orbit-b absolute inset-[24%] rounded-full border border-white/[0.04]" />
-                <div
-                  className="absolute h-[16rem] w-[16rem] rounded-full blur-3xl"
-                  style={{
-                    background: `radial-gradient(circle, ${withAlpha(previewAppearance.primary.color, primary ? 0.2 : 0.08)}, transparent 66%)`,
-                  }}
-                />
+                <div className="creation-preview-stage relative flex h-[13.25rem] w-[13.25rem] items-center justify-center">
+                  <div
+                    className="absolute h-[16rem] w-[16rem] rounded-full blur-3xl"
+                    style={{
+                      background: `radial-gradient(circle, ${withAlpha(previewAppearance.primary.color, primary ? 0.2 : 0.08)}, transparent 66%)`,
+                    }}
+                  />
+                  <div className="creation-preview-ring absolute inset-[4%] rounded-full border border-white/[0.05]" />
+                  <div className="creation-preview-ring creation-preview-ring-slow absolute inset-[15%] rounded-full border border-white/[0.045]" />
+                  <div className="creation-preview-ring creation-preview-ring-delayed absolute inset-[26%] rounded-full border border-white/[0.04]" />
+                  <div className="creation-preview-ring creation-preview-ring-soft absolute inset-[37%] rounded-full border border-white/[0.035]" />
 
-                <div className="relative h-[7rem] w-[7rem]" style={previewStarStyle}>
-                  <span className="star-aura absolute inset-1/2 h-[8.4rem] w-[8.4rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                  <span className="star-halo absolute inset-1/2 h-[5.6rem] w-[5.6rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                  <span className="star-shell absolute inset-1/2 h-[3.1rem] w-[3.1rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                  <span className="star-sheen absolute inset-1/2 h-[4.4rem] w-[4.4rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                  <span className="star-core absolute inset-1/2 h-[0.85rem] w-[0.85rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                  {[0, 1, 2, 3].map((ring) => (
-                    <span
-                      key={ring}
-                      className="ripple-ring absolute inset-1/2 h-[3rem] w-[3rem] -translate-x-1/2 -translate-y-1/2 rounded-full border"
-                      style={{
-                        animationDelay: `${ring * (previewAppearance.primary.ripple / 4.2)}s`,
-                      }}
-                    />
-                  ))}
-                  <span className="user-star-shell absolute inset-1/2 h-[5rem] w-[5rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                  <div className="relative h-[7rem] w-[7rem]" style={previewStarStyle}>
+                    <span className="star-aura absolute inset-1/2 h-[8.4rem] w-[8.4rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                    <span className="star-halo absolute inset-1/2 h-[5.6rem] w-[5.6rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                    <span className="star-shell absolute inset-1/2 h-[3.1rem] w-[3.1rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                    <span className="star-sheen absolute inset-1/2 h-[4.4rem] w-[4.4rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                    <span className="star-core absolute inset-1/2 h-[0.85rem] w-[0.85rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                    {[0, 1, 2, 3].map((ring) => (
+                      <span
+                        key={ring}
+                        className="ripple-ring absolute inset-1/2 h-[3rem] w-[3rem] -translate-x-1/2 -translate-y-1/2 rounded-full border"
+                        style={{
+                          animationDelay: `${ring * (previewAppearance.primary.ripple / 4.2)}s`,
+                        }}
+                      />
+                    ))}
+                    <span className="user-star-shell absolute inset-1/2 h-[5rem] w-[5rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                  </div>
                 </div>
 
                 <div className="absolute bottom-4 left-1/2 w-[84%] -translate-x-1/2 text-center">

@@ -143,17 +143,30 @@ button {
     radial-gradient(circle at 50% 85%, rgba(64, 87, 126, 0.12), transparent 58%);
 }
 
-.creation-orbit {
+.creation-preview-stage {
+  isolation: isolate;
+}
+
+.creation-preview-ring {
   transform-origin: center;
-  opacity: 0.55;
+  opacity: 0.22;
+  animation: creation-preview-ring 18s ease-in-out infinite;
 }
 
-.creation-orbit-a {
-  animation: creation-orbit-a 24s linear infinite;
+.creation-preview-ring-slow {
+  animation-duration: 23s;
+  animation-delay: -7s;
 }
 
-.creation-orbit-b {
-  animation: creation-orbit-b 31s linear infinite;
+.creation-preview-ring-delayed {
+  animation-duration: 20s;
+  animation-delay: -11s;
+}
+
+.creation-preview-ring-soft {
+  animation-duration: 16s;
+  animation-delay: -4s;
+  opacity: 0.16;
 }
 
 .creation-step-scene {
@@ -391,31 +404,18 @@ button {
   }
 }
 
-@keyframes creation-orbit-a {
+@keyframes creation-preview-ring {
   0% {
-    transform: rotate(0deg) scale(1);
-    opacity: 0.22;
+    transform: scale(0.985);
+    opacity: 0.16;
   }
   50% {
-    opacity: 0.44;
+    transform: scale(1.015);
+    opacity: 0.3;
   }
   100% {
-    transform: rotate(360deg) scale(1.02);
-    opacity: 0.22;
-  }
-}
-
-@keyframes creation-orbit-b {
-  0% {
-    transform: rotate(360deg) scale(0.98);
-    opacity: 0.18;
-  }
-  50% {
-    opacity: 0.36;
-  }
-  100% {
-    transform: rotate(0deg) scale(1);
-    opacity: 0.18;
+    transform: scale(0.985);
+    opacity: 0.16;
   }
 }
 
