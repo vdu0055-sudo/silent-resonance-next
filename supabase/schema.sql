@@ -194,7 +194,7 @@ begin
 
   insert into public.star_secrets (star_id)
   values (v_star_id)
-  returning edit_token into v_edit_token;
+  returning public.star_secrets.edit_token into v_edit_token;
 
   insert into public.presence (star_id, is_online, last_seen)
   values (v_star_id, true, now());
