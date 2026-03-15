@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildStarAppearance,
   type VisualStar,
@@ -12,6 +12,12 @@ type UniverseCanvasProps = {
   stars: VisualStar[];
   onResonanceSent?: (star: VisualStar) => void;
   onUserStarClick?: (star: VisualStar) => void;
+  externalResonance?: {
+    id: string;
+    fromStarId: string;
+    toStarId: string;
+  } | null;
+  onExternalResonancePlayed?: (id: string) => void;
 };
 
 type ResonanceWave = {
@@ -161,6 +167,8 @@ export default function UniverseCanvas({
   stars,
   onResonanceSent = () => {},
   onUserStarClick = () => {},
+  externalResonance = null,
+  onExternalResonancePlayed = () => {},
 }: UniverseCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pointerRef = useRef({ x: 0.5, y: 0.5 });
@@ -353,7 +361,7 @@ export default function UniverseCanvas({
     };
   }, []);
 
-  const getStarCenter = (starId: string) => {
+  const getStarCenter = useCallback((starId: string) => {
     const node = starRefs.current.get(starId);
     if (!node) {
       return null;
@@ -364,53 +372,14 @@ export default function UniverseCanvas({
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     };
-  };
+  }, []);
 
-  const handleStarEnter = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
-    setHoveredStar(star);
-    setTooltipPosition({ x: event.clientX, y: event.clientY });
-  };
-
-  const handleStarMove = (event: MouseEvent<HTMLButtonElement>) => {
-    setTooltipPosition({ x: event.clientX, y: event.clientY });
-  };
-
-  const handleStarClick = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-
-    if (star.isUser) {
-      onUserStarClick(star);
-      return;
-    }
-
-    const rect = event.currentTarget.getBoundingClientRect();
-    setActiveStar(star);
-    setActionPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top,
-    });
-  };
-
-  const handleResonate = () => {
-    if (!activeStar) {
-      return;
-    }
-
-    const sourceStar = stars.find((star) => star.isUser);
-    const targetStar = activeStar;
-    setActiveStar(null);
-
-    if (!sourceStar) {
-      onResonanceSent(targetStar);
-      return;
-    }
-
+  const startResonanceWave = useCallback((sourceStar: VisualStar, targetStar: VisualStar) => {
     const source = getStarCenter(sourceStar.id);
     const target = getStarCenter(targetStar.id);
 
     if (!source || !target) {
-      onResonanceSent(targetStar);
-      return;
+      return false;
     }
 
     const dx = target.x - source.x;
@@ -418,8 +387,7 @@ export default function UniverseCanvas({
     const distance = Math.hypot(dx, dy);
 
     if (distance < 24) {
-      onResonanceSent(targetStar);
-      return;
+      return false;
     }
 
     const sourceAppearance = buildStarAppearance(sourceStar);
@@ -465,8 +433,68 @@ export default function UniverseCanvas({
       setResonanceWave(null);
     }, resonanceDelay + resonanceDuration + 700);
 
+    return true;
+  }, [getStarCenter]);
+
+  const handleStarEnter = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
+    setHoveredStar(star);
+    setTooltipPosition({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleStarMove = (event: MouseEvent<HTMLButtonElement>) => {
+    setTooltipPosition({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleStarClick = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    if (star.isUser) {
+      onUserStarClick(star);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setActiveStar(star);
+    setActionPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+    });
+  };
+
+  const handleResonate = () => {
+    if (!activeStar) {
+      return;
+    }
+
+    const sourceStar = stars.find((star) => star.isUser);
+    const targetStar = activeStar;
+    setActiveStar(null);
+
+    if (!sourceStar) {
+      onResonanceSent(targetStar);
+      return;
+    }
+
+    startResonanceWave(sourceStar, targetStar);
     onResonanceSent(targetStar);
   };
+
+  useEffect(() => {
+    if (!externalResonance) {
+      return;
+    }
+
+    const sourceStar = stars.find((star) => star.id === externalResonance.fromStarId);
+    const targetStar = stars.find((star) => star.id === externalResonance.toStarId);
+
+    if (!sourceStar || !targetStar) {
+      return;
+    }
+
+    if (startResonanceWave(sourceStar, targetStar)) {
+      onExternalResonancePlayed(externalResonance.id);
+    }
+  }, [externalResonance, onExternalResonancePlayed, startResonanceWave, stars]);
 
   return (
     <div className="absolute inset-0" onClick={() => setActiveStar(null)}>

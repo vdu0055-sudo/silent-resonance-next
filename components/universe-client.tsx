@@ -5,6 +5,7 @@ import {
   fetchUniverse,
   leavePresence,
   readStoredIdentity,
+  type ResonanceEvent,
   sendResonance,
   subscribeUniverse,
   touchPresence,
@@ -33,12 +34,22 @@ export default function UniverseClient() {
   const [flowOpen, setFlowOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [whisper, setWhisper] = useState<Whisper | null>(null);
+  const [incomingResonance, setIncomingResonance] = useState<{
+    id: string;
+    fromStarId: string;
+    toStarId: string;
+  } | null>(null);
   const flowLaunchTimeoutRef = useRef<number | null>(null);
+  const identityRef = useRef<StoredIdentity | null>(null);
   const sceneStars = useMemo(
     () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
+
+  useEffect(() => {
+    identityRef.current = identity;
+  }, [identity]);
 
   useEffect(() => {
     if (!whisper) {
@@ -93,9 +104,24 @@ export default function UniverseClient() {
     void load();
 
     try {
-      channel = subscribeUniverse(() => {
-        void load();
-      });
+      channel = subscribeUniverse(
+        () => {
+          void load();
+        },
+        (event: ResonanceEvent) => {
+          const currentIdentity = identityRef.current;
+
+          if (!currentIdentity || event.to_star_id !== currentIdentity.starId) {
+            return;
+          }
+
+          setIncomingResonance({
+            id: event.id,
+            fromStarId: event.from_star_id,
+            toStarId: event.to_star_id,
+          });
+        },
+      );
     } catch {
       if (!cancelled) {
         setLoading(false);
@@ -238,6 +264,10 @@ export default function UniverseClient() {
         stars={sceneStars}
         onResonanceSent={handleResonanceSent}
         onUserStarClick={handleUserStarEdit}
+        externalResonance={incomingResonance}
+        onExternalResonancePlayed={(id) => {
+          setIncomingResonance((current) => (current?.id === id ? null : current));
+        }}
       />
 
       <Hero

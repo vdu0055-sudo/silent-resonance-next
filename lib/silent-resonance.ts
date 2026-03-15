@@ -51,6 +51,13 @@ export type UniverseStar = {
   is_online: boolean;
 };
 
+export type ResonanceEvent = {
+  id: string;
+  from_star_id: string;
+  to_star_id: string;
+  created_at: string;
+};
+
 function isBrowser() {
   return typeof window !== 'undefined';
 }
@@ -189,7 +196,10 @@ export async function fetchUniverse() {
   return data as UniverseStar[];
 }
 
-export function subscribeUniverse(onChange: () => void) {
+export function subscribeUniverse(
+  onChange: () => void,
+  onResonance?: (event: ResonanceEvent) => void,
+) {
   const supabase = getSupabaseClient();
 
   return supabase
@@ -207,7 +217,13 @@ export function subscribeUniverse(onChange: () => void) {
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'resonance' },
-      onChange,
+      (payload) => {
+        onChange();
+
+        if (onResonance && payload.new) {
+          onResonance(payload.new as ResonanceEvent);
+        }
+      },
     )
     .subscribe();
 }
