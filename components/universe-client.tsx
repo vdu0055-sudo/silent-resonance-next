@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FREQUENCIES,
-  STATES,
   fetchUniverse,
   leavePresence,
   readStoredIdentity,
@@ -16,30 +14,51 @@ import {
   type UniverseStar,
   upsertMyStar,
 } from '../lib/silent-resonance';
+import { mapUniverseStarsToScene, type VisualStar } from '../lib/universe-visuals';
+import CreationFlow from './creation-flow';
+import Hero from './hero';
+import UniverseCanvas from './universe-canvas';
 
-function frequencyLabel(id: FrequencyId) {
-  return FREQUENCIES.find((item) => item.id === id)?.label || id;
-}
-
-function stateLabel(id: StateId) {
-  return STATES.find((item) => item.id === id)?.label || id;
-}
+type Whisper = {
+  id: number;
+  message: string;
+  variant: 'default' | 'soft';
+  duration: number;
+};
 
 export default function UniverseClient() {
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
   const [stars, setStars] = useState<UniverseStar[]>([]);
   const [loading, setLoading] = useState(true);
+  const [flowOpen, setFlowOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
-  const [primary, setPrimary] = useState<FrequencyId>('cosmos');
-  const [secondary, setSecondary] = useState<FrequencyId[]>([]);
-  const [currentState, setCurrentState] = useState<StateId>('present');
-
-  const myStar = useMemo(
-    () => stars.find((star) => star.id === identity?.starId) || null,
+  const [whisper, setWhisper] = useState<Whisper | null>(null);
+  const flowLaunchTimeoutRef = useRef<number | null>(null);
+  const sceneStars = useMemo(
+    () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
   );
+  const myStar = sceneStars.find((star) => star.isUser) ?? null;
+
+  useEffect(() => {
+    if (!whisper) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setWhisper(null);
+    }, whisper.duration);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [whisper]);
+
+  useEffect(() => {
+    return () => {
+      if (flowLaunchTimeoutRef.current) {
+        window.clearTimeout(flowLaunchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const saved = readStoredIdentity();
@@ -51,8 +70,18 @@ export default function UniverseClient() {
     const load = async () => {
       try {
         const nextStars = await fetchUniverse();
+
         if (!cancelled) {
           setStars(nextStars);
+        }
+      } catch {
+        if (!cancelled) {
+          setWhisper({
+            id: Date.now(),
+            message: '宇宙快照暂时没有被接住',
+            variant: 'soft',
+            duration: 1200,
+          });
         }
       } finally {
         if (!cancelled) {
@@ -61,21 +90,27 @@ export default function UniverseClient() {
       }
     };
 
-    load().catch(() => {
-      setMessage('宇宙快照暂时没有加载出来。先检查 Supabase 环境变量和数据库脚本。');
-    });
+    void load();
 
     try {
       channel = subscribeUniverse(() => {
-        load().catch(() => {});
+        void load();
       });
     } catch {
-      setLoading(false);
-      setMessage('Realtime 还没有连上。先把 .env.local 和 Supabase 项目配好。');
+      if (!cancelled) {
+        setLoading(false);
+        setWhisper({
+          id: Date.now(),
+          message: '实时宇宙还没有连上',
+          variant: 'soft',
+          duration: 1200,
+        });
+      }
     }
 
     return () => {
       cancelled = true;
+
       if (channel) {
         void channel.unsubscribe();
       }
@@ -84,23 +119,18 @@ export default function UniverseClient() {
 
   useEffect(() => {
     if (!identity) {
-      setFormOpen(true);
-      return undefined;
+      return;
     }
 
     let heartbeatId: number | null = null;
 
-    touchPresence(identity).catch(() => {
-      setFormOpen(true);
-      setMessage('你的在线状态还没有写回宇宙。');
-    });
-
+    void touchPresence(identity).catch(() => {});
     heartbeatId = window.setInterval(() => {
-      touchPresence(identity).catch(() => {});
+      void touchPresence(identity).catch(() => {});
     }, 25_000);
 
     const handleLeave = () => {
-      leavePresence(identity).catch(() => {});
+      void leavePresence(identity).catch(() => {});
     };
 
     window.addEventListener('pagehide', handleLeave);
@@ -110,255 +140,155 @@ export default function UniverseClient() {
       if (heartbeatId) {
         window.clearInterval(heartbeatId);
       }
+
       window.removeEventListener('pagehide', handleLeave);
       window.removeEventListener('beforeunload', handleLeave);
     };
   }, [identity]);
 
-  useEffect(() => {
-    if (!myStar) {
-      return;
-    }
-
-    setPrimary(myStar.primary_frequency);
-    setSecondary(myStar.secondary_frequencies);
-    setCurrentState(myStar.current_state);
-  }, [myStar]);
-
-  const handleSecondaryToggle = (id: FrequencyId) => {
-    setSecondary((current) => {
-      if (current.includes(id)) {
-        return current.filter((item) => item !== id);
-      }
-
-      if (current.length >= 3) {
-        return current;
-      }
-
-      return [...current, id];
+  const triggerWhisper = (message: string, options: Partial<Whisper> = {}) => {
+    setWhisper({
+      id: Date.now(),
+      message,
+      variant: options.variant ?? 'default',
+      duration: options.duration ?? 2200,
     });
   };
 
-  const handleSave = async () => {
+  const handleCreateStar = async ({
+    primary,
+    secondary,
+    state,
+  }: {
+    primary: FrequencyId;
+    secondary: FrequencyId[];
+    state: StateId;
+  }) => {
     setSubmitting(true);
-    setMessage('');
 
     try {
       const nextIdentity = await upsertMyStar({
         primaryFrequency: primary,
         secondaryFrequencies: secondary,
-        currentState,
+        currentState: state,
       });
 
       setIdentity(nextIdentity);
       await touchPresence(nextIdentity);
       setStars(await fetchUniverse());
-      setFormOpen(false);
-      setMessage('你的星已经进入宇宙。');
+      setFlowOpen(false);
+      triggerWhisper('你的星已经在这里缓慢发光');
     } catch {
-      setMessage('这次校准没有写入成功。');
+      triggerWhisper('这一轮校准没有被宇宙接住', {
+        variant: 'soft',
+        duration: 1200,
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleResonance = async (targetStarId: string) => {
-    if (!identity) {
-      setFormOpen(true);
+  const handleUserStarEdit = (star: VisualStar = myStar as VisualStar) => {
+    if (flowLaunchTimeoutRef.current) {
+      window.clearTimeout(flowLaunchTimeoutRef.current);
+    }
+
+    if (!star) {
+      setFlowOpen(true);
       return;
     }
 
-    try {
-      await sendResonance(targetStarId, identity);
-      setMessage('你向这颗星发送了一次微弱共振。');
-    } catch {
-      setMessage('这次共振没有送达。');
+    triggerWhisper('再次校准', {
+      variant: 'soft',
+      duration: 900,
+    });
+
+    flowLaunchTimeoutRef.current = window.setTimeout(() => {
+      setFlowOpen(true);
+    }, 360);
+  };
+
+  const handleResonanceSent = (star: VisualStar) => {
+    if (!identity) {
+      setFlowOpen(true);
+      return;
     }
+
+    void sendResonance(star.id, identity).catch(() => {
+      triggerWhisper('这次共振没有送达', {
+        variant: 'soft',
+        duration: 1100,
+      });
+    });
   };
 
   return (
-    <main className="min-h-screen bg-[#040813] px-6 py-8 text-[#dde6f4]">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <p className="text-sm tracking-[0.45em] text-[#93a7c5]/60">沉默宇宙</p>
-            <h1 className="mt-6 text-4xl font-light tracking-[0.12em]">真实在线版本</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-8 tracking-[0.18em] text-[#a6b7d0]/76">
-              现在宇宙里的星，不再来自前端假数据。谁真正进入这个站点，谁就会成为一颗正在场的星。
-            </p>
-          </div>
+    <div className="relative min-h-screen overflow-hidden bg-night text-mist">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(86,118,171,0.18),transparent_24%),radial-gradient(circle_at_82%_12%,rgba(126,95,148,0.16),transparent_22%),radial-gradient(circle_at_50%_78%,rgba(36,70,109,0.28),transparent_34%),linear-gradient(180deg,#02050c_0%,#040813_38%,#050913_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(104,132,177,0.16),transparent_56%)] opacity-60 [mask-image:radial-gradient(circle_at_center,black_55%,transparent_100%)]" />
+      <div className="cosmic-vignette absolute inset-0" />
+      <div className="cosmic-grain absolute inset-0 opacity-[0.2]" />
+      <div className="animate-deep-breathe absolute left-1/2 top-[11%] h-[40rem] w-[40rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(121,146,184,0.1),rgba(54,78,116,0.04)_36%,transparent_72%)] blur-3xl" />
+      <div className="absolute left-1/2 top-[18%] h-[32rem] w-[32rem] -translate-x-1/2 rounded-full border border-white/[0.03] opacity-70" />
+      <div className="absolute left-1/2 top-[18%] h-[45rem] w-[45rem] -translate-x-1/2 rounded-full border border-white/[0.02] opacity-50" />
+      <div className="absolute bottom-[-20%] left-1/2 h-[34rem] w-[60rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(51,78,116,0.22),rgba(3,7,17,0)_66%)] blur-3xl" />
+      <div className="absolute inset-0 backdrop-blur-[1px]" />
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-4 text-right backdrop-blur-xl">
-            <p className="text-xs tracking-[0.38em] text-[#93a7c5]/55">此刻</p>
-            <p className="mt-3 text-2xl tracking-[0.16em]">
-              {loading ? '...' : stars.length} 人正在安静存在
-            </p>
-          </div>
-        </div>
+      <UniverseCanvas
+        stars={sceneStars}
+        onResonanceSent={handleResonanceSent}
+        onUserStarClick={handleUserStarEdit}
+      />
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <p className="text-sm tracking-[0.28em] text-[#dde6f4]/88">我的星</p>
-              <button
-                type="button"
-                onClick={() => setFormOpen((current) => !current)}
-                className="rounded-full border border-white/10 px-4 py-2 text-xs tracking-[0.26em] text-[#a6b7d0]/82"
-              >
-                {formOpen ? '收起' : myStar ? '重新校准' : '创建'}
-              </button>
-            </div>
+      <Hero
+        population={loading ? 0 : sceneStars.length}
+        onJoin={() => setFlowOpen(true)}
+        flowOpen={flowOpen}
+        hasUserStar={Boolean(myStar) || Boolean(identity && loading)}
+      />
 
-            {myStar ? (
-              <div className="mt-6 space-y-3 text-sm tracking-[0.14em] text-[#cdd8ea]/84">
-                <p>主频：{frequencyLabel(myStar.primary_frequency)}</p>
-                <p>
-                  副频：
-                  {myStar.secondary_frequencies.length
-                    ? myStar.secondary_frequencies.map(frequencyLabel).join(' · ')
-                    : '只保留主频'}
-                </p>
-                <p>状态：{stateLabel(myStar.current_state)}</p>
-              </div>
+      {flowOpen ? (
+        <CreationFlow
+          key={myStar ? `${myStar.id}-${myStar.primary}-${myStar.state}` : 'new-star'}
+          existingStar={myStar}
+          submitting={submitting}
+          onClose={() => setFlowOpen(false)}
+          onComplete={handleCreateStar}
+        />
+      ) : null}
+
+      {whisper ? (
+        <div key={whisper.id} className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className={`universe-whisper relative flex items-center justify-center rounded-full ${
+              whisper.variant === 'soft' ? 'h-[8rem] w-[8rem]' : 'h-[13rem] w-[13rem]'
+            }`}
+          >
+            <span
+              className={`universe-whisper-flash absolute inset-0 rounded-full ${
+                whisper.variant === 'soft' ? 'opacity-[0.55]' : ''
+              }`}
+            />
+            {whisper.variant === 'soft' ? (
+              <span className="universe-whisper-pulse absolute inset-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full" />
             ) : (
-              <p className="mt-6 text-sm leading-7 tracking-[0.18em] text-[#a6b7d0]/74">
-                还没有属于你的星。先完成一次最小校准，再让它进入宇宙。
-              </p>
+              <>
+                <span className="universe-whisper-ring absolute inset-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                <span className="universe-whisper-ring universe-whisper-ring-soft absolute inset-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+              </>
             )}
-
-            {formOpen ? (
-              <div className="mt-8 space-y-6 border-t border-white/8 pt-6">
-                <div>
-                  <p className="text-xs tracking-[0.36em] text-[#93a7c5]/56">主频</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {FREQUENCIES.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setPrimary(item.id);
-                          setSecondary((current) => current.filter((value) => value !== item.id));
-                        }}
-                        className={`rounded-full border px-3 py-2 text-xs tracking-[0.18em] ${
-                          primary === item.id
-                            ? 'border-white/24 bg-white/10 text-white'
-                            : 'border-white/10 text-[#a6b7d0]/82'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs tracking-[0.36em] text-[#93a7c5]/56">副频</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {FREQUENCIES.filter((item) => item.id !== primary).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleSecondaryToggle(item.id)}
-                        className={`rounded-full border px-3 py-2 text-xs tracking-[0.18em] ${
-                          secondary.includes(item.id)
-                            ? 'border-white/18 bg-white/8 text-white'
-                            : 'border-white/10 text-[#a6b7d0]/82'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs tracking-[0.36em] text-[#93a7c5]/56">状态</p>
-                  <div className="mt-3 grid gap-2">
-                    {STATES.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setCurrentState(item.id)}
-                        className={`rounded-2xl border px-4 py-3 text-left text-sm tracking-[0.14em] ${
-                          currentState === item.id
-                            ? 'border-white/18 bg-white/8 text-white'
-                            : 'border-white/10 text-[#a6b7d0]/82'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={submitting}
-                  className="w-full rounded-full border border-white/14 bg-white/[0.08] px-6 py-3 text-sm tracking-[0.3em] text-white disabled:opacity-50"
-                >
-                  {submitting ? '正在写入宇宙' : '生成我的星'}
-                </button>
-              </div>
-            ) : null}
-
-            {message ? (
-              <p className="mt-6 text-sm tracking-[0.18em] text-[#b6c6dc]/78">{message}</p>
-            ) : null}
-          </section>
-
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {stars.map((star) => {
-                const isMine = star.id === identity?.starId;
-
-                return (
-                  <article
-                    key={star.id}
-                    className="rounded-[1.75rem] border border-white/8 bg-white/[0.025] p-5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{
-                          backgroundColor: star.color,
-                          boxShadow: `0 0 18px ${star.color}`,
-                        }}
-                      />
-                      <div>
-                        <p className="text-sm tracking-[0.16em] text-white/92">
-                          {frequencyLabel(star.primary_frequency)}
-                          {isMine ? ' · 你的星' : ''}
-                        </p>
-                        <p className="mt-1 text-xs tracking-[0.2em] text-[#9eb1cd]/72">
-                          {stateLabel(star.current_state)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="mt-4 text-xs leading-7 tracking-[0.16em] text-[#a6b7d0]/76">
-                      副频：
-                      {star.secondary_frequencies.length
-                        ? star.secondary_frequencies.map(frequencyLabel).join(' · ')
-                        : '只保留主频'}
-                    </p>
-
-                    {!isMine ? (
-                      <button
-                        type="button"
-                        onClick={() => handleResonance(star.id)}
-                        className="mt-5 rounded-full border border-white/12 px-4 py-2 text-xs tracking-[0.28em] text-white/88"
-                      >
-                        共振
-                      </button>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+            <p
+              className={`relative text-center text-mist/[0.8] ${
+                whisper.variant === 'soft'
+                  ? 'px-4 text-[11px] tracking-[0.34em]'
+                  : 'max-w-[18rem] px-6 text-[12px] leading-7 tracking-[0.24em]'
+              }`}
+            >
+              {whisper.message}
+            </p>
+          </div>
         </div>
-      </div>
-    </main>
+      ) : null}
+    </div>
   );
 }
