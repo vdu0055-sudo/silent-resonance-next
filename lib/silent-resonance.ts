@@ -38,6 +38,11 @@ export type StarFormInput = {
   currentState: StateId;
 };
 
+export type WorldPosition = {
+  x: number;
+  y: number;
+};
+
 export type UniverseStar = {
   id: string;
   nickname: string | null;
@@ -49,6 +54,8 @@ export type UniverseStar = {
   updated_at: string;
   last_seen: string | null;
   is_online: boolean;
+  world_x: number | null;
+  world_y: number | null;
 };
 
 export type ResonanceEvent = {
@@ -141,11 +148,16 @@ export async function upsertMyStar(input: StarFormInput) {
   }
 }
 
-export async function touchPresence(identity: StoredIdentity) {
+export async function touchPresence(
+  identity: StoredIdentity,
+  worldPosition?: WorldPosition,
+) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.rpc('touch_presence', {
     p_star_id: identity.starId,
     p_edit_token: identity.editToken,
+    p_world_x: worldPosition?.x ?? null,
+    p_world_y: worldPosition?.y ?? null,
   });
 
   if (error) {

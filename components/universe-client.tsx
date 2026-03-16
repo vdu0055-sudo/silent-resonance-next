@@ -13,6 +13,7 @@ import {
   type StateId,
   type StoredIdentity,
   type UniverseStar,
+  type WorldPosition,
   upsertMyStar,
 } from '../lib/silent-resonance';
 import {
@@ -35,6 +36,7 @@ export default function UniverseClient() {
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
   const [stars, setStars] = useState<UniverseStar[]>([]);
   const [encounterStep, setEncounterStep] = useState(0);
+  const [explorationPosition, setExplorationPosition] = useState<WorldPosition>({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
   const [flowOpen, setFlowOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +48,10 @@ export default function UniverseClient() {
   } | null>(null);
   const flowLaunchTimeoutRef = useRef<number | null>(null);
   const identityRef = useRef<StoredIdentity | null>(null);
+  const explorationPositionRef = useRef<WorldPosition>({ x: 0, y: 0 });
+  const hydratedWorldStarIdRef = useRef<string | null>(null);
+  const positionSyncTimeoutRef = useRef<number | null>(null);
+  const lastPositionSyncRef = useRef({ x: Number.NaN, y: Number.NaN, at: 0 });
   const encounterSeedRef = useRef(
     `encounter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
@@ -61,14 +67,19 @@ export default function UniverseClient() {
         identity?.starId ?? null,
         encounterSeed,
         encounterStep,
+        explorationPosition,
       ),
-    [encounterSeed, encounterStep, identity?.starId, sceneStars],
+    [encounterSeed, encounterStep, explorationPosition, identity?.starId, sceneStars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
 
   useEffect(() => {
     identityRef.current = identity;
   }, [identity]);
+
+  useEffect(() => {
+    explorationPositionRef.current = explorationPosition;
+  }, [explorationPosition]);
 
   useEffect(() => {
     if (!whisper) {
@@ -87,8 +98,26 @@ export default function UniverseClient() {
       if (flowLaunchTimeoutRef.current) {
         window.clearTimeout(flowLaunchTimeoutRef.current);
       }
+
+      if (positionSyncTimeoutRef.current) {
+        window.clearTimeout(positionSyncTimeoutRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!identity || !myStar) {
+      hydratedWorldStarIdRef.current = null;
+      return;
+    }
+
+    if (hydratedWorldStarIdRef.current === identity.starId) {
+      return;
+    }
+
+    hydratedWorldStarIdRef.current = identity.starId;
+    setExplorationPosition(myStar.world);
+  }, [identity, myStar]);
 
   useEffect(() => {
     const saved = readStoredIdentity();
@@ -169,9 +198,9 @@ export default function UniverseClient() {
 
     let heartbeatId: number | null = null;
 
-    void touchPresence(identity).catch(() => {});
+    void touchPresence(identity, explorationPositionRef.current).catch(() => {});
     heartbeatId = window.setInterval(() => {
-      void touchPresence(identity).catch(() => {});
+      void touchPresence(identity, explorationPositionRef.current).catch(() => {});
     }, 25_000);
 
     const handleLeave = () => {
@@ -190,6 +219,46 @@ export default function UniverseClient() {
       window.removeEventListener('beforeunload', handleLeave);
     };
   }, [identity]);
+
+  useEffect(() => {
+    if (!identity) {
+      return;
+    }
+
+    const last = lastPositionSyncRef.current;
+    const deltaX = Math.abs(explorationPosition.x - last.x);
+    const deltaY = Math.abs(explorationPosition.y - last.y);
+    const now = Date.now();
+
+    if (
+      Number.isFinite(last.x) &&
+      deltaX < 12 &&
+      deltaY < 12 &&
+      now - last.at < 220
+    ) {
+      return;
+    }
+
+    if (positionSyncTimeoutRef.current) {
+      window.clearTimeout(positionSyncTimeoutRef.current);
+    }
+
+    positionSyncTimeoutRef.current = window.setTimeout(() => {
+      lastPositionSyncRef.current = {
+        x: explorationPosition.x,
+        y: explorationPosition.y,
+        at: Date.now(),
+      };
+
+      void touchPresence(identity, explorationPosition).catch(() => {});
+    }, 120);
+
+    return () => {
+      if (positionSyncTimeoutRef.current) {
+        window.clearTimeout(positionSyncTimeoutRef.current);
+      }
+    };
+  }, [explorationPosition, identity]);
 
   const triggerWhisper = (message: string, options: Partial<Whisper> = {}) => {
     setWhisper({
@@ -219,7 +288,7 @@ export default function UniverseClient() {
       });
 
       setIdentity(nextIdentity);
-      await touchPresence(nextIdentity);
+      await touchPresence(nextIdentity, explorationPositionRef.current);
       setStars(await fetchUniverse());
       setFlowOpen(false);
       triggerWhisper('你的星已经在这里缓慢发光');
@@ -289,6 +358,8 @@ export default function UniverseClient() {
 
       <UniverseCanvas
         stars={visibleStars}
+        explorationPosition={explorationPosition}
+        onExplorationChange={setExplorationPosition}
         onResonanceSent={handleResonanceSent}
         onUserStarClick={handleUserStarEdit}
         onEncounterShift={setEncounterStep}

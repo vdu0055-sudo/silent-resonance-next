@@ -10,6 +10,11 @@ import StarDetailTooltip from './star-detail-tooltip';
 
 type UniverseCanvasProps = {
   stars: VisualStar[];
+  explorationPosition: {
+    x: number;
+    y: number;
+  };
+  onExplorationChange?: (position: { x: number; y: number }) => void;
   onResonanceSent?: (star: VisualStar) => void;
   onUserStarClick?: (star: VisualStar) => void;
   onEncounterShift?: (step: number) => void;
@@ -185,6 +190,8 @@ function renderResonanceBurst({
 
 export default function UniverseCanvas({
   stars,
+  explorationPosition,
+  onExplorationChange = () => {},
   onResonanceSent = () => {},
   onUserStarClick = () => {},
   onEncounterShift = () => {},
@@ -192,26 +199,29 @@ export default function UniverseCanvas({
   onExternalResonancePlayed = () => {},
 }: UniverseCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dragInputRef = useRef({ x: 0, y: 0 });
-  const dragStateRef = useRef({
+  const holdInputRef = useRef({ x: 0, y: 0 });
+  const holdStateRef = useRef({
     active: false,
     pointerId: null as number | null,
-    lastX: 0,
-    lastY: 0,
-    draggedDistance: 0,
+    moved: false,
     suppressClickUntil: 0,
   });
   const starRefs = useRef(new Map<string, HTMLButtonElement>());
   const resonanceTimeoutRef = useRef<number | null>(null);
   const waveSequenceRef = useRef(0);
   const encounterStepRef = useRef(0);
+  const explorationSyncRef = useRef({
+    x: explorationPosition.x,
+    y: explorationPosition.y,
+    at: 0,
+  });
   const motionRef = useRef({
-    travelX: 0,
-    travelY: 0,
+    travelX: explorationPosition.x,
+    travelY: explorationPosition.y,
     velocityX: 0,
     velocityY: 0,
-    cameraX: 0,
-    cameraY: 0,
+    cameraX: explorationPosition.x,
+    cameraY: explorationPosition.y,
     selfLeadX: 0,
     selfLeadY: 0,
     explorationDistance: 0,
@@ -224,49 +234,49 @@ export default function UniverseCanvas({
   const [motion, setMotion] = useState<MotionState>({
     viewportWidth: 1280,
     viewportHeight: 720,
-    cameraX: 0,
-    cameraY: 0,
+    cameraX: explorationPosition.x,
+    cameraY: explorationPosition.y,
     selfLeadX: 0,
     selfLeadY: 0,
   });
 
   useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
-
-      if (!dragState.active || dragState.pointerId !== event.pointerId) {
-        return;
-      }
-
-      const width = Math.max(window.innerWidth * 0.16, 120);
-      const height = Math.max(window.innerHeight * 0.16, 120);
-      const deltaX = event.clientX - dragState.lastX;
-      const deltaY = event.clientY - dragState.lastY;
-
-      dragState.lastX = event.clientX;
-      dragState.lastY = event.clientY;
-      dragState.draggedDistance += Math.hypot(deltaX, deltaY);
-      dragInputRef.current = {
-        x: clamp(deltaX / width, -1.25, 1.25),
-        y: clamp(deltaY / height, -1.25, 1.25),
+    const updateHoldInput = (clientX: number, clientY: number) => {
+      holdInputRef.current = {
+        x: clamp((clientX / window.innerWidth - 0.5) * 2, -1.2, 1.2),
+        y: clamp((clientY / window.innerHeight - 0.5) * 2, -1.2, 1.2),
       };
     };
 
-    const handlePointerStop = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
+    const handlePointerMove = (event: PointerEvent) => {
+      const holdState = holdStateRef.current;
 
-      if (!dragState.active || dragState.pointerId !== event.pointerId) {
+      if (!holdState.active || holdState.pointerId !== event.pointerId) {
         return;
       }
 
-      if (dragState.draggedDistance > 8) {
-        dragState.suppressClickUntil = performance.now() + 180;
+      holdState.moved =
+        holdState.moved ||
+        Math.abs(event.clientX - window.innerWidth / 2) > 18 ||
+        Math.abs(event.clientY - window.innerHeight / 2) > 18;
+      updateHoldInput(event.clientX, event.clientY);
+    };
+
+    const handlePointerStop = (event: PointerEvent) => {
+      const holdState = holdStateRef.current;
+
+      if (!holdState.active || holdState.pointerId !== event.pointerId) {
+        return;
       }
 
-      dragState.active = false;
-      dragState.pointerId = null;
-      dragState.draggedDistance = 0;
-      dragInputRef.current = { x: 0, y: 0 };
+      if (holdState.moved) {
+        holdState.suppressClickUntil = performance.now() + 180;
+      }
+
+      holdState.active = false;
+      holdState.pointerId = null;
+      holdState.moved = false;
+      holdInputRef.current = { x: 0, y: 0 };
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -279,6 +289,34 @@ export default function UniverseCanvas({
       window.removeEventListener('pointercancel', handlePointerStop);
     };
   }, []);
+
+  useEffect(() => {
+    const motionState = motionRef.current;
+    const holdState = holdStateRef.current;
+
+    if (
+      holdState.active ||
+      (Math.abs(motionState.travelX - explorationPosition.x) < 1 &&
+        Math.abs(motionState.travelY - explorationPosition.y) < 1)
+    ) {
+      return;
+    }
+
+    motionState.travelX = explorationPosition.x;
+    motionState.travelY = explorationPosition.y;
+    motionState.cameraX = explorationPosition.x;
+    motionState.cameraY = explorationPosition.y;
+    explorationSyncRef.current = {
+      x: explorationPosition.x,
+      y: explorationPosition.y,
+      at: performance.now(),
+    };
+    setMotion((current) => ({
+      ...current,
+      cameraX: explorationPosition.x,
+      cameraY: explorationPosition.y,
+    }));
+  }, [explorationPosition]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -359,35 +397,58 @@ export default function UniverseCanvas({
       const height = window.innerHeight;
       const delta = previousTime ? Math.min(32, time - previousTime) : 16.7;
       previousTime = time;
-      const dragInputX = dragInputRef.current.x;
-      const dragInputY = dragInputRef.current.y;
+      const inputX = holdStateRef.current.active ? holdInputRef.current.x : 0;
+      const inputY = holdStateRef.current.active ? holdInputRef.current.y : 0;
       const motionState = motionRef.current;
 
       const previousTravelX = motionState.travelX;
       const previousTravelY = motionState.travelY;
 
       motionState.velocityX =
-        motionState.velocityX * Math.pow(0.84, delta / 16.7) + dragInputX * delta * 0.75;
+        motionState.velocityX * Math.pow(0.76, delta / 16.7) + inputX * delta * 0.2;
       motionState.velocityY =
-        motionState.velocityY * Math.pow(0.84, delta / 16.7) + dragInputY * delta * 0.72;
+        motionState.velocityY * Math.pow(0.76, delta / 16.7) + inputY * delta * 0.18;
       motionState.travelX += motionState.velocityX;
       motionState.travelY += motionState.velocityY;
       motionState.explorationDistance += Math.hypot(
         motionState.travelX - previousTravelX,
         motionState.travelY - previousTravelY,
       );
-      motionState.cameraX += (motionState.travelX - motionState.cameraX) * 0.07;
-      motionState.cameraY += (motionState.travelY - motionState.cameraY) * 0.07;
-      motionState.selfLeadX += (dragInputX * 14 - motionState.selfLeadX) * 0.14;
-      motionState.selfLeadY += (dragInputY * 12 - motionState.selfLeadY) * 0.14;
-      dragInputRef.current.x *= Math.pow(0.42, delta / 16.7);
-      dragInputRef.current.y *= Math.pow(0.42, delta / 16.7);
+      motionState.cameraX += (motionState.travelX - motionState.cameraX) * 0.1;
+      motionState.cameraY += (motionState.travelY - motionState.cameraY) * 0.1;
+      motionState.selfLeadX += (inputX * 18 - motionState.selfLeadX) * 0.16;
+      motionState.selfLeadY += (inputY * 16 - motionState.selfLeadY) * 0.16;
+
+      if (
+        !holdStateRef.current.active &&
+        Math.abs(motionState.velocityX) < 0.02 &&
+        Math.abs(motionState.velocityY) < 0.02
+      ) {
+        motionState.velocityX = 0;
+        motionState.velocityY = 0;
+      }
 
       const encounterStep = Math.floor(motionState.explorationDistance / 420);
 
       if (encounterStep !== encounterStepRef.current) {
         encounterStepRef.current = encounterStep;
         onEncounterShift(encounterStep);
+      }
+
+      if (
+        Math.abs(motionState.travelX - explorationSyncRef.current.x) > 6 ||
+        Math.abs(motionState.travelY - explorationSyncRef.current.y) > 6 ||
+        (holdStateRef.current.active && time - explorationSyncRef.current.at > 140)
+      ) {
+        explorationSyncRef.current = {
+          x: motionState.travelX,
+          y: motionState.travelY,
+          at: time,
+        };
+        onExplorationChange({
+          x: motionState.travelX,
+          y: motionState.travelY,
+        });
       }
 
       const parallaxX = motionState.cameraX * 0.28 + motionState.selfLeadX * 0.92;
@@ -484,7 +545,7 @@ export default function UniverseCanvas({
       window.cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resize);
     };
-  }, [onEncounterShift]);
+  }, [onEncounterShift, onExplorationChange]);
 
   useEffect(() => {
     const clearAction = () => {
@@ -601,7 +662,7 @@ export default function UniverseCanvas({
   const handleStarClick = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (dragStateRef.current.suppressClickUntil > performance.now()) {
+    if (holdStateRef.current.suppressClickUntil > performance.now()) {
       return;
     }
 
@@ -672,9 +733,11 @@ export default function UniverseCanvas({
     const maxY = height * 0.84;
     const baseX = minX + ((star.position.x - 8) / 84) * (maxX - minX);
     const baseY = minY + ((star.position.y - 10) / 78) * (maxY - minY);
-    const travelFactor = 0.34 + index * 0.11;
-    let x = wrapWithinRange(baseX - motion.cameraX * travelFactor, minX, maxX);
-    let y = wrapWithinRange(baseY - motion.cameraY * (travelFactor * 0.92), minY, maxY);
+    const worldInfluence = star.synthetic ? 0.42 : 0.66;
+    const worldDeltaX = (star.world.x - motion.cameraX) * worldInfluence;
+    const worldDeltaY = (star.world.y - motion.cameraY) * (worldInfluence * 0.94);
+    let x = clamp(baseX + worldDeltaX, minX, maxX);
+    let y = clamp(baseY + worldDeltaY, minY, maxY);
     const dx = x - width / 2;
     const dy = y - height / 2;
     const minDistance = Math.min(width, height) * 0.19;
@@ -700,19 +763,25 @@ export default function UniverseCanvas({
     <div
       className="absolute inset-0 touch-none"
       onClick={() => {
-        if (dragStateRef.current.suppressClickUntil > performance.now()) {
+        if (holdStateRef.current.suppressClickUntil > performance.now()) {
           return;
         }
 
         setActiveStar(null);
       }}
       onPointerDown={(event) => {
-        dragStateRef.current.active = true;
-        dragStateRef.current.pointerId = event.pointerId;
-        dragStateRef.current.lastX = event.clientX;
-        dragStateRef.current.lastY = event.clientY;
-        dragStateRef.current.draggedDistance = 0;
-        dragInputRef.current = { x: 0, y: 0 };
+        holdStateRef.current.active = true;
+        holdStateRef.current.pointerId = event.pointerId;
+        holdStateRef.current.moved =
+          Math.abs(event.clientX - window.innerWidth / 2) > 18 ||
+          Math.abs(event.clientY - window.innerHeight / 2) > 18;
+        holdInputRef.current = {
+          x: clamp((event.clientX / window.innerWidth - 0.5) * 2, -1.2, 1.2),
+          y: clamp((event.clientY / window.innerHeight - 0.5) * 2, -1.2, 1.2),
+        };
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {}
       }}
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full opacity-95" />
@@ -772,6 +841,7 @@ export default function UniverseCanvas({
                 star.isUser ? 'z-30' : 'z-20'
               }`}
               style={style}
+              onPointerDown={(event) => event.stopPropagation()}
               onMouseEnter={(event) => handleStarEnter(star, event)}
               onMouseMove={handleStarMove}
               onMouseLeave={() => setHoveredStar(null)}

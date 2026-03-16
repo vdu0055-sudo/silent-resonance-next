@@ -82,8 +82,16 @@ create table if not exists public.presence (
   star_id uuid primary key references public.stars(id) on delete cascade,
   is_online boolean not null default true,
   last_seen timestamptz not null default now(),
+  world_x double precision not null default 0,
+  world_y double precision not null default 0,
   updated_at timestamptz not null default now()
 );
+
+alter table public.presence
+add column if not exists world_x double precision not null default 0;
+
+alter table public.presence
+add column if not exists world_y double precision not null default 0;
 
 create table if not exists public.resonance (
   id uuid primary key default gen_random_uuid(),
@@ -122,6 +130,8 @@ select
   s.created_at,
   s.updated_at,
   p.last_seen,
+  p.world_x,
+  p.world_y,
   coalesce(p.is_online, false) and p.last_seen > now() - interval '60 seconds' as is_online
 from public.stars s
 left join public.presence p on p.star_id = s.id;
@@ -196,8 +206,8 @@ begin
   values (v_star_id)
   returning public.star_secrets.edit_token into v_edit_token;
 
-  insert into public.presence (star_id, is_online, last_seen)
-  values (v_star_id, true, now());
+  insert into public.presence (star_id, is_online, last_seen, world_x, world_y)
+  values (v_star_id, true, now(), 0, 0);
 
   return query
   select v_star_id, v_edit_token;
@@ -238,8 +248,8 @@ begin
     color = public.frequency_color(p_primary)
   where id = p_star_id;
 
-  insert into public.presence (star_id, is_online, last_seen)
-  values (p_star_id, true, now())
+  insert into public.presence (star_id, is_online, last_seen, world_x, world_y)
+  values (p_star_id, true, now(), 0, 0)
   on conflict (star_id)
   do update set
     is_online = true,
@@ -256,7 +266,9 @@ $$;
 
 create or replace function public.touch_presence(
   p_star_id uuid,
-  p_edit_token uuid
+  p_edit_token uuid,
+  p_world_x double precision default null,
+  p_world_y double precision default null
 )
 returns void
 language plpgsql
@@ -273,12 +285,20 @@ begin
     raise exception 'invalid star token';
   end if;
 
-  insert into public.presence (star_id, is_online, last_seen)
-  values (p_star_id, true, now())
+  insert into public.presence (star_id, is_online, last_seen, world_x, world_y)
+  values (
+    p_star_id,
+    true,
+    now(),
+    coalesce(p_world_x, 0),
+    coalesce(p_world_y, 0)
+  )
   on conflict (star_id)
   do update set
     is_online = true,
-    last_seen = now();
+    last_seen = now(),
+    world_x = coalesce(p_world_x, public.presence.world_x, 0),
+    world_y = coalesce(p_world_y, public.presence.world_y, 0);
 end;
 $$;
 
@@ -341,7 +361,7 @@ $$;
 
 grant execute on function public.create_star(text, text[], text, text) to anon, authenticated;
 grant execute on function public.update_star_profile(uuid, uuid, text, text[], text, text) to anon, authenticated;
-grant execute on function public.touch_presence(uuid, uuid) to anon, authenticated;
+grant execute on function public.touch_presence(uuid, uuid, double precision, double precision) to anon, authenticated;
 grant execute on function public.leave_presence(uuid, uuid) to anon, authenticated;
 grant execute on function public.send_resonance(uuid, uuid, uuid) to anon, authenticated;
 

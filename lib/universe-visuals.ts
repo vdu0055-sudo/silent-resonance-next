@@ -39,6 +39,10 @@ export type VisualStar = {
   isUser: boolean;
   isCalibrated: boolean;
   color: string;
+  world: {
+    x: number;
+    y: number;
+  };
   synthetic?: boolean;
 };
 
@@ -295,6 +299,13 @@ function resolveSharedPosition(seed: number) {
   };
 }
 
+function resolveSharedWorldPosition(seed: number) {
+  return {
+    x: Math.round((seededUnit(seed, 7) - 0.5) * 720),
+    y: Math.round((seededUnit(seed, 8) - 0.5) * 560),
+  };
+}
+
 function resolveSynchronizedDelay(createdAt: string, durationMs: number, phaseRatio: number) {
   const createdAtMs = Date.parse(createdAt);
 
@@ -369,6 +380,7 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
     const isUser = star.id === myStarId;
     const primary = getFrequencyById(star.primary_frequency) ?? VISUAL_FREQUENCIES[0];
     const position = resolveSharedPosition(seed);
+    const fallbackWorld = resolveSharedWorldPosition(seed);
     const size = 12 + seededUnit(seed, 3) * 8 + (isUser ? 3 : 0);
     const driftDurationMs = Math.max(
       1000,
@@ -396,6 +408,10 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
       isUser,
       isCalibrated: true,
       color: star.color,
+      world: {
+        x: Number.isFinite(star.world_x) ? (star.world_x as number) : fallbackWorld.x,
+        y: Number.isFinite(star.world_y) ? (star.world_y as number) : fallbackWorld.y,
+      },
     } satisfies VisualStar;
   });
 }
@@ -404,6 +420,7 @@ function createSyntheticEncounterStars(
   count: number,
   encounterSeed: string,
   startIndex: number,
+  viewerWorld: { x: number; y: number },
 ) {
   return Array.from({ length: count }, (_, index) => {
     const encounterIndex = startIndex + index;
@@ -441,6 +458,10 @@ function createSyntheticEncounterStars(
       isUser: false,
       isCalibrated: true,
       color: primary.color,
+      world: {
+        x: viewerWorld.x + Math.round((seededUnit(seed, 7) - 0.5) * 480),
+        y: viewerWorld.y + Math.round((seededUnit(seed, 8) - 0.5) * 420),
+      },
       synthetic: true,
     } satisfies VisualStar;
   });
@@ -451,6 +472,7 @@ export function selectVisibleSceneStars(
   myStarId: string | null,
   encounterSeed: string,
   encounterStep = 0,
+  viewerWorld = { x: 0, y: 0 },
 ) {
   if (!stars.length) {
     return [];
@@ -463,12 +485,24 @@ export function selectVisibleSceneStars(
   }
 
   const remoteStars = stars.filter((star) => star.id !== userStar.id);
-
-  const visibleRemoteStars = remoteStars.slice(0, MAX_VISIBLE_STARS - 1);
-  const missingCount = MAX_VISIBLE_STARS - 1 - visibleRemoteStars.length;
-  const syntheticStartIndex = Math.max(0, encounterStep) * (MAX_VISIBLE_STARS - 1);
+  const visibleSlots = MAX_VISIBLE_STARS - 1;
+  const normalizedStep = Math.max(0, encounterStep);
+  const visibleRemoteStars =
+    remoteStars.length <= visibleSlots
+      ? remoteStars
+      : Array.from({ length: visibleSlots }, (_, index) => {
+          const remoteIndex = (normalizedStep * visibleSlots + index) % remoteStars.length;
+          return remoteStars[remoteIndex];
+        });
+  const missingCount = visibleSlots - visibleRemoteStars.length;
+  const syntheticStartIndex = normalizedStep * Math.max(1, missingCount || visibleSlots);
   const syntheticStars = missingCount > 0
-    ? createSyntheticEncounterStars(missingCount, encounterSeed, syntheticStartIndex)
+    ? createSyntheticEncounterStars(
+        missingCount,
+        encounterSeed,
+        syntheticStartIndex,
+        viewerWorld,
+      )
     : [];
 
   return [userStar, ...visibleRemoteStars, ...syntheticStars];
