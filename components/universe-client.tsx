@@ -254,7 +254,7 @@ export default function UniverseClient() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(104,132,177,0.16),transparent_56%)] opacity-60 [mask-image:radial-gradient(circle_at_center,black_55%,transparent_100%)]" />
       <div className="cosmic-vignette absolute inset-0" />
       <div className="cosmic-grain absolute inset-0 opacity-[0.2]" />
-      <div className="animate-deep-breathe absolute left-1/2 top-[11%] h-[40rem] w-[40rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(121,146,184,0.1),rgba(54,78,116,0.04)_36%,transparent_72%)] blur-3xl" />
+      <div className="animate-deep-breathe absolute left-1/2 top-[11%] h-[40rem] w-[40rem] rounded-full bg-[radial-gradient(circle_at_center,rgba(121,146,184,0.1),rgba(54,78,116,0.04)_36%,transparent_72%)] blur-3xl" />
       <div className="absolute left-1/2 top-[18%] h-[32rem] w-[32rem] -translate-x-1/2 rounded-full border border-white/[0.03] opacity-70" />
       <div className="absolute left-1/2 top-[18%] h-[45rem] w-[45rem] -translate-x-1/2 rounded-full border border-white/[0.02] opacity-50" />
       <div className="absolute bottom-[-20%] left-1/2 h-[34rem] w-[60rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(51,78,116,0.22),rgba(3,7,17,0)_66%)] blur-3xl" />
@@ -300,11 +300,11 @@ export default function UniverseClient() {
               }`}
             />
             {whisper.variant === 'soft' ? (
-              <span className="universe-whisper-pulse absolute inset-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+              <span className="universe-whisper-pulse absolute left-1/2 top-1/2 h-10 w-10 rounded-full" />
             ) : (
               <>
-                <span className="universe-whisper-ring absolute inset-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full" />
-                <span className="universe-whisper-ring universe-whisper-ring-soft absolute inset-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+                <span className="universe-whisper-ring absolute left-1/2 top-1/2 h-16 w-16 rounded-full" />
+                <span className="universe-whisper-ring universe-whisper-ring-soft absolute left-1/2 top-1/2 h-16 w-16 rounded-full" />
               </>
             )}
             <p

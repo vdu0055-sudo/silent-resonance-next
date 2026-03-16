@@ -559,30 +559,30 @@ export default function UniverseCanvas({
               onClick={(event) => handleStarClick(star, event)}
             >
               <span
-                className="star-aura absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="star-aura absolute left-1/2 top-1/2 rounded-full"
                 style={{ width: `${auraSize}px`, height: `${auraSize}px` }}
               />
               <span
-                className="star-halo absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="star-halo absolute left-1/2 top-1/2 rounded-full"
                 style={{ width: `${haloSize}px`, height: `${haloSize}px` }}
               />
               <span
-                className="star-shell absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="star-shell absolute left-1/2 top-1/2 rounded-full"
                 style={{ width: `${shellSize}px`, height: `${shellSize}px` }}
               />
               <span
-                className="star-sheen absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="star-sheen absolute left-1/2 top-1/2 rounded-full"
                 style={{ width: `${shellSize * 1.4}px`, height: `${shellSize * 1.4}px` }}
               />
               <span
-                className="star-core absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="star-core absolute left-1/2 top-1/2 rounded-full"
                 style={{ width: `${coreSize}px`, height: `${coreSize}px` }}
               />
 
               {[0, 1, 2, 3].map((ring) => (
                 <span
                   key={ring}
-                  className="ripple-ring absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border"
+                  className="ripple-ring absolute left-1/2 top-1/2 rounded-full border"
                   style={{
                     width: `${shellSize}px`,
                     height: `${shellSize}px`,
@@ -593,7 +593,7 @@ export default function UniverseCanvas({
 
               {star.isUser ? (
                 <span
-                  className="user-star-shell absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  className="user-star-shell absolute left-1/2 top-1/2 rounded-full"
                   style={{ width: `${userShellSize}px`, height: `${userShellSize}px` }}
                 />
               ) : null}
