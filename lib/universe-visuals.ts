@@ -39,6 +39,7 @@ export type VisualStar = {
   isUser: boolean;
   isCalibrated: boolean;
   color: string;
+  synthetic?: boolean;
 };
 
 const MAX_VISIBLE_STARS = 3;
@@ -222,6 +223,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function pickVisualFrequency(seed: number) {
+  const selectable = VISUAL_FREQUENCIES.filter((item) => item.selectable !== false);
+
+  return selectable[seed % selectable.length] ?? selectable[0] ?? VISUAL_FREQUENCIES[0];
+}
+
+function pickVisualState(seed: number) {
+  return VISUAL_STATES[seed % VISUAL_STATES.length]?.id ?? VISUAL_STATES[0].id;
+}
+
 function hexToRgb(hex: string) {
   const normalized = hex.replace('#', '');
   const value =
@@ -389,7 +400,52 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
   });
 }
 
-export function selectVisibleSceneStars(stars: VisualStar[], myStarId: string | null) {
+function createSyntheticEncounterStars(count: number, encounterSeed: string) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = `synthetic-${encounterSeed}-${index}`;
+    const seed = hashString(id);
+    const primary = pickVisualFrequency(seed);
+    const secondaryPool = VISUAL_FREQUENCIES.filter(
+      (item) => item.selectable !== false && item.id !== primary.id,
+    );
+    const secondaryCount = seed % 2;
+    const secondary = Array.from({ length: secondaryCount }, (__unused, secondaryIndex) => {
+      const candidate = secondaryPool[(seed + secondaryIndex * 3) % secondaryPool.length];
+      return candidate?.id as FrequencyId | undefined;
+    }).filter((item): item is FrequencyId => Boolean(item));
+    const size = 12 + seededUnit(seed, 3) * 8;
+    const delay = resolveSynchronizedDelay(
+      new Date(Date.now() - (index + 1) * 47_000).toISOString(),
+      Math.round((30 + size * 0.9) * primary.driftFactor * 1000),
+      seededUnit(seed, 6),
+    );
+
+    return {
+      id,
+      nickname: `wanderer-${index + 1}`,
+      primary: primary.id,
+      secondary,
+      state: pickVisualState(seed),
+      position: resolveSharedPosition(seed),
+      size,
+      drift: {
+        x: Math.round((seededUnit(seed, 4) - 0.5) * 34),
+        y: Math.round((seededUnit(seed, 5) - 0.5) * 28),
+      },
+      delay,
+      isUser: false,
+      isCalibrated: true,
+      color: primary.color,
+      synthetic: true,
+    } satisfies VisualStar;
+  });
+}
+
+export function selectVisibleSceneStars(
+  stars: VisualStar[],
+  myStarId: string | null,
+  encounterSeed: string,
+) {
   if (!stars.length) {
     return [];
   }
@@ -400,7 +456,18 @@ export function selectVisibleSceneStars(stars: VisualStar[], myStarId: string | 
     return stars.slice(0, MAX_VISIBLE_STARS);
   }
 
-  const remoteStars = stars.filter((star) => star.id !== userStar.id);
+  const remoteStars = stars
+    .filter((star) => star.id !== userStar.id)
+    .sort(
+      (left, right) =>
+        hashString(`${encounterSeed}:${left.id}`) - hashString(`${encounterSeed}:${right.id}`),
+    );
 
-  return [userStar, ...remoteStars.slice(0, MAX_VISIBLE_STARS - 1)];
+  const visibleRemoteStars = remoteStars.slice(0, MAX_VISIBLE_STARS - 1);
+  const missingCount = MAX_VISIBLE_STARS - 1 - visibleRemoteStars.length;
+  const syntheticStars = missingCount > 0
+    ? createSyntheticEncounterStars(missingCount, encounterSeed)
+    : [];
+
+  return [userStar, ...visibleRemoteStars, ...syntheticStars];
 }

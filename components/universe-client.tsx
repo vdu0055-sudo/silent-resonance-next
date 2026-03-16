@@ -45,12 +45,20 @@ export default function UniverseClient() {
   } | null>(null);
   const flowLaunchTimeoutRef = useRef<number | null>(null);
   const identityRef = useRef<StoredIdentity | null>(null);
+  const encounterSeedRef = useRef(
+    `encounter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   const sceneStars = useMemo(
     () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
   );
   const visibleStars = useMemo(
-    () => selectVisibleSceneStars(sceneStars, identity?.starId ?? null),
+    () =>
+      selectVisibleSceneStars(
+        sceneStars,
+        identity?.starId ?? null,
+        encounterSeedRef.current,
+      ),
     [identity?.starId, sceneStars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
@@ -245,6 +253,14 @@ export default function UniverseClient() {
   const handleResonanceSent = (star: VisualStar) => {
     if (!identity) {
       setFlowOpen(true);
+      return;
+    }
+
+    if (star.synthetic) {
+      triggerWhisper('你遇到了一颗漂流星，它暂时不会给出真实回响', {
+        variant: 'soft',
+        duration: 1400,
+      });
       return;
     }
 
