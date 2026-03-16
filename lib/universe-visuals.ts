@@ -41,14 +41,6 @@ export type VisualStar = {
   color: string;
 };
 
-const USER_STAR_POSITIONS = [
-  { x: 58, y: 52 },
-  { x: 64, y: 47 },
-  { x: 54, y: 61 },
-  { x: 69, y: 56 },
-  { x: 47, y: 49 },
-];
-
 export const VISUAL_FREQUENCIES: FrequencyVisual[] = [
   {
     id: 'dormant',
@@ -275,7 +267,7 @@ function mixHexColors(colors: string[]) {
     .join('')}`;
 }
 
-function resolveRemotePosition(seed: number) {
+function resolveSharedPosition(seed: number) {
   let x = 12 + seededUnit(seed, 1) * 76;
   let y = 12 + seededUnit(seed, 2) * 72;
 
@@ -290,8 +282,18 @@ function resolveRemotePosition(seed: number) {
   };
 }
 
-function resolveUserPosition(seed: number) {
-  return USER_STAR_POSITIONS[seed % USER_STAR_POSITIONS.length] ?? USER_STAR_POSITIONS[0];
+function resolveSynchronizedDelay(createdAt: string, durationMs: number, phaseRatio: number) {
+  const createdAtMs = Date.parse(createdAt);
+
+  if (!Number.isFinite(createdAtMs) || durationMs <= 0) {
+    return `-${(phaseRatio * 5.6 + 0.4).toFixed(1)}s`;
+  }
+
+  const phaseOffsetMs = Math.round(phaseRatio * durationMs);
+  const elapsedMs =
+    ((Date.now() - createdAtMs + phaseOffsetMs) % durationMs + durationMs) % durationMs;
+
+  return `-${elapsedMs}ms`;
 }
 
 export function withAlpha(hex: string, alpha: number) {
@@ -352,7 +354,18 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
   return stars.map((star) => {
     const seed = hashString(star.id);
     const isUser = star.id === myStarId;
-    const position = isUser ? resolveUserPosition(seed) : resolveRemotePosition(seed);
+    const primary = getFrequencyById(star.primary_frequency) ?? VISUAL_FREQUENCIES[0];
+    const position = resolveSharedPosition(seed);
+    const size = 12 + seededUnit(seed, 3) * 8 + (isUser ? 3 : 0);
+    const driftDurationMs = Math.max(
+      1000,
+      Math.round((30 + size * 0.9) * primary.driftFactor * 1000),
+    );
+    const delay = resolveSynchronizedDelay(
+      star.created_at,
+      driftDurationMs,
+      seededUnit(seed, 6),
+    );
 
     return {
       id: star.id,
@@ -361,12 +374,12 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
       secondary: star.secondary_frequencies,
       state: star.current_state,
       position,
-      size: 12 + seededUnit(seed, 3) * 8 + (isUser ? 3 : 0),
+      size,
       drift: {
         x: Math.round((seededUnit(seed, 4) - 0.5) * 34),
         y: Math.round((seededUnit(seed, 5) - 0.5) * 28),
       },
-      delay: `-${(seededUnit(seed, 6) * 5.6 + 0.4).toFixed(1)}s`,
+      delay,
       isUser,
       isCalibrated: true,
       color: star.color,
