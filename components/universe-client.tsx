@@ -34,6 +34,7 @@ type Whisper = {
 export default function UniverseClient() {
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
   const [stars, setStars] = useState<UniverseStar[]>([]);
+  const [encounterStep, setEncounterStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [flowOpen, setFlowOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +49,7 @@ export default function UniverseClient() {
   const encounterSeedRef = useRef(
     `encounter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
+  const encounterSeed = `${encounterSeedRef.current}-step-${encounterStep}`;
   const sceneStars = useMemo(
     () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
@@ -57,9 +59,9 @@ export default function UniverseClient() {
       selectVisibleSceneStars(
         sceneStars,
         identity?.starId ?? null,
-        encounterSeedRef.current,
+        encounterSeed,
       ),
-    [identity?.starId, sceneStars],
+    [encounterSeed, identity?.starId, sceneStars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
 
@@ -288,6 +290,7 @@ export default function UniverseClient() {
         stars={visibleStars}
         onResonanceSent={handleResonanceSent}
         onUserStarClick={handleUserStarEdit}
+        onEncounterShift={setEncounterStep}
         externalResonance={incomingResonance}
         onExternalResonancePlayed={(id) => {
           setIncomingResonance((current) => (current?.id === id ? null : current));

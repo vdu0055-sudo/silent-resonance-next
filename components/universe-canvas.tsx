@@ -12,6 +12,7 @@ type UniverseCanvasProps = {
   stars: VisualStar[];
   onResonanceSent?: (star: VisualStar) => void;
   onUserStarClick?: (star: VisualStar) => void;
+  onEncounterShift?: (step: number) => void;
   externalResonance?: {
     id: string;
     fromStarId: string;
@@ -186,6 +187,7 @@ export default function UniverseCanvas({
   stars,
   onResonanceSent = () => {},
   onUserStarClick = () => {},
+  onEncounterShift = () => {},
   externalResonance = null,
   onExternalResonancePlayed = () => {},
 }: UniverseCanvasProps) {
@@ -194,6 +196,7 @@ export default function UniverseCanvas({
   const starRefs = useRef(new Map<string, HTMLButtonElement>());
   const resonanceTimeoutRef = useRef<number | null>(null);
   const waveSequenceRef = useRef(0);
+  const encounterStepRef = useRef(0);
   const motionRef = useRef({
     travelX: 0,
     travelY: 0,
@@ -203,6 +206,7 @@ export default function UniverseCanvas({
     cameraY: 0,
     selfLeadX: 0,
     selfLeadY: 0,
+    explorationDistance: 0,
   });
   const [hoveredStar, setHoveredStar] = useState<VisualStar | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
@@ -322,16 +326,30 @@ export default function UniverseCanvas({
       const pointerY = (pointerRef.current.y - 0.5) * 2;
       const motionState = motionRef.current;
 
+      const previousTravelX = motionState.travelX;
+      const previousTravelY = motionState.travelY;
+
       motionState.velocityX =
         motionState.velocityX * Math.pow(0.9, delta / 16.7) + pointerX * delta * 0.015;
       motionState.velocityY =
         motionState.velocityY * Math.pow(0.9, delta / 16.7) + pointerY * delta * 0.013;
       motionState.travelX += motionState.velocityX;
       motionState.travelY += motionState.velocityY;
+      motionState.explorationDistance += Math.hypot(
+        motionState.travelX - previousTravelX,
+        motionState.travelY - previousTravelY,
+      );
       motionState.cameraX += (motionState.travelX - motionState.cameraX) * 0.07;
       motionState.cameraY += (motionState.travelY - motionState.cameraY) * 0.07;
       motionState.selfLeadX += (pointerX * 18 - motionState.selfLeadX) * 0.16;
       motionState.selfLeadY += (pointerY * 16 - motionState.selfLeadY) * 0.16;
+
+      const encounterStep = Math.floor(motionState.explorationDistance / 420);
+
+      if (encounterStep !== encounterStepRef.current) {
+        encounterStepRef.current = encounterStep;
+        onEncounterShift(encounterStep);
+      }
 
       const parallaxX = motionState.cameraX * 0.28 + pointerX * 18;
       const parallaxY = motionState.cameraY * 0.24 + pointerY * 14;
@@ -427,7 +445,7 @@ export default function UniverseCanvas({
       window.cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resize);
     };
-  }, []);
+  }, [onEncounterShift]);
 
   useEffect(() => {
     const clearAction = () => {

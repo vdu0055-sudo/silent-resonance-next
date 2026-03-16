@@ -456,12 +456,7 @@ export function selectVisibleSceneStars(
     return stars.slice(0, MAX_VISIBLE_STARS);
   }
 
-  const remoteStars = stars
-    .filter((star) => star.id !== userStar.id)
-    .sort(
-      (left, right) =>
-        hashString(`${encounterSeed}:${left.id}`) - hashString(`${encounterSeed}:${right.id}`),
-    );
+  const remoteStars = stars.filter((star) => star.id !== userStar.id);
 
   const visibleRemoteStars = remoteStars.slice(0, MAX_VISIBLE_STARS - 1);
   const missingCount = MAX_VISIBLE_STARS - 1 - visibleRemoteStars.length;
