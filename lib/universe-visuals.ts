@@ -400,9 +400,14 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
   });
 }
 
-function createSyntheticEncounterStars(count: number, encounterSeed: string) {
+function createSyntheticEncounterStars(
+  count: number,
+  encounterSeed: string,
+  startIndex: number,
+) {
   return Array.from({ length: count }, (_, index) => {
-    const id = `synthetic-${encounterSeed}-${index}`;
+    const encounterIndex = startIndex + index;
+    const id = `synthetic-${encounterSeed}-${encounterIndex}`;
     const seed = hashString(id);
     const primary = pickVisualFrequency(seed);
     const secondaryPool = VISUAL_FREQUENCIES.filter(
@@ -415,14 +420,14 @@ function createSyntheticEncounterStars(count: number, encounterSeed: string) {
     }).filter((item): item is FrequencyId => Boolean(item));
     const size = 12 + seededUnit(seed, 3) * 8;
     const delay = resolveSynchronizedDelay(
-      new Date(Date.now() - (index + 1) * 47_000).toISOString(),
+      new Date(Date.now() - (encounterIndex + 1) * 47_000).toISOString(),
       Math.round((30 + size * 0.9) * primary.driftFactor * 1000),
       seededUnit(seed, 6),
     );
 
     return {
       id,
-      nickname: `wanderer-${index + 1}`,
+      nickname: `wanderer-${encounterIndex + 1}`,
       primary: primary.id,
       secondary,
       state: pickVisualState(seed),
@@ -445,6 +450,7 @@ export function selectVisibleSceneStars(
   stars: VisualStar[],
   myStarId: string | null,
   encounterSeed: string,
+  encounterStep = 0,
 ) {
   if (!stars.length) {
     return [];
@@ -460,8 +466,9 @@ export function selectVisibleSceneStars(
 
   const visibleRemoteStars = remoteStars.slice(0, MAX_VISIBLE_STARS - 1);
   const missingCount = MAX_VISIBLE_STARS - 1 - visibleRemoteStars.length;
+  const syntheticStartIndex = Math.max(0, encounterStep) * (MAX_VISIBLE_STARS - 1);
   const syntheticStars = missingCount > 0
-    ? createSyntheticEncounterStars(missingCount, encounterSeed)
+    ? createSyntheticEncounterStars(missingCount, encounterSeed, syntheticStartIndex)
     : [];
 
   return [userStar, ...visibleRemoteStars, ...syntheticStars];

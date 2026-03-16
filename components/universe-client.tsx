@@ -49,7 +49,7 @@ export default function UniverseClient() {
   const encounterSeedRef = useRef(
     `encounter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
-  const encounterSeed = `${encounterSeedRef.current}-step-${encounterStep}`;
+  const encounterSeed = encounterSeedRef.current;
   const sceneStars = useMemo(
     () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
@@ -60,8 +60,9 @@ export default function UniverseClient() {
         sceneStars,
         identity?.starId ?? null,
         encounterSeed,
+        encounterStep,
       ),
-    [encounterSeed, identity?.starId, sceneStars],
+    [encounterSeed, encounterStep, identity?.starId, sceneStars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
 

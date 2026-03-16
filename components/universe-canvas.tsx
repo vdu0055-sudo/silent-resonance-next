@@ -192,7 +192,15 @@ export default function UniverseCanvas({
   onExternalResonancePlayed = () => {},
 }: UniverseCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pointerRef = useRef({ x: 0.5, y: 0.5 });
+  const dragInputRef = useRef({ x: 0, y: 0 });
+  const dragStateRef = useRef({
+    active: false,
+    pointerId: null as number | null,
+    lastX: 0,
+    lastY: 0,
+    draggedDistance: 0,
+    suppressClickUntil: 0,
+  });
   const starRefs = useRef(new Map<string, HTMLButtonElement>());
   const resonanceTimeoutRef = useRef<number | null>(null);
   const waveSequenceRef = useRef(0);
@@ -224,22 +232,51 @@ export default function UniverseCanvas({
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      pointerRef.current = {
-        x: event.clientX / window.innerWidth,
-        y: event.clientY / window.innerHeight,
+      const dragState = dragStateRef.current;
+
+      if (!dragState.active || dragState.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const width = Math.max(window.innerWidth * 0.16, 120);
+      const height = Math.max(window.innerHeight * 0.16, 120);
+      const deltaX = event.clientX - dragState.lastX;
+      const deltaY = event.clientY - dragState.lastY;
+
+      dragState.lastX = event.clientX;
+      dragState.lastY = event.clientY;
+      dragState.draggedDistance += Math.hypot(deltaX, deltaY);
+      dragInputRef.current = {
+        x: clamp(deltaX / width, -1.25, 1.25),
+        y: clamp(deltaY / height, -1.25, 1.25),
       };
     };
 
-    const handlePointerLeave = () => {
-      pointerRef.current = { x: 0.5, y: 0.5 };
+    const handlePointerStop = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+
+      if (!dragState.active || dragState.pointerId !== event.pointerId) {
+        return;
+      }
+
+      if (dragState.draggedDistance > 8) {
+        dragState.suppressClickUntil = performance.now() + 180;
+      }
+
+      dragState.active = false;
+      dragState.pointerId = null;
+      dragState.draggedDistance = 0;
+      dragInputRef.current = { x: 0, y: 0 };
     };
 
     window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerleave', handlePointerLeave);
+    window.addEventListener('pointerup', handlePointerStop);
+    window.addEventListener('pointercancel', handlePointerStop);
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerleave', handlePointerLeave);
+      window.removeEventListener('pointerup', handlePointerStop);
+      window.removeEventListener('pointercancel', handlePointerStop);
     };
   }, []);
 
@@ -322,17 +359,17 @@ export default function UniverseCanvas({
       const height = window.innerHeight;
       const delta = previousTime ? Math.min(32, time - previousTime) : 16.7;
       previousTime = time;
-      const pointerX = (pointerRef.current.x - 0.5) * 2;
-      const pointerY = (pointerRef.current.y - 0.5) * 2;
+      const dragInputX = dragInputRef.current.x;
+      const dragInputY = dragInputRef.current.y;
       const motionState = motionRef.current;
 
       const previousTravelX = motionState.travelX;
       const previousTravelY = motionState.travelY;
 
       motionState.velocityX =
-        motionState.velocityX * Math.pow(0.9, delta / 16.7) + pointerX * delta * 0.015;
+        motionState.velocityX * Math.pow(0.84, delta / 16.7) + dragInputX * delta * 0.75;
       motionState.velocityY =
-        motionState.velocityY * Math.pow(0.9, delta / 16.7) + pointerY * delta * 0.013;
+        motionState.velocityY * Math.pow(0.84, delta / 16.7) + dragInputY * delta * 0.72;
       motionState.travelX += motionState.velocityX;
       motionState.travelY += motionState.velocityY;
       motionState.explorationDistance += Math.hypot(
@@ -341,8 +378,10 @@ export default function UniverseCanvas({
       );
       motionState.cameraX += (motionState.travelX - motionState.cameraX) * 0.07;
       motionState.cameraY += (motionState.travelY - motionState.cameraY) * 0.07;
-      motionState.selfLeadX += (pointerX * 18 - motionState.selfLeadX) * 0.16;
-      motionState.selfLeadY += (pointerY * 16 - motionState.selfLeadY) * 0.16;
+      motionState.selfLeadX += (dragInputX * 14 - motionState.selfLeadX) * 0.14;
+      motionState.selfLeadY += (dragInputY * 12 - motionState.selfLeadY) * 0.14;
+      dragInputRef.current.x *= Math.pow(0.42, delta / 16.7);
+      dragInputRef.current.y *= Math.pow(0.42, delta / 16.7);
 
       const encounterStep = Math.floor(motionState.explorationDistance / 420);
 
@@ -351,8 +390,8 @@ export default function UniverseCanvas({
         onEncounterShift(encounterStep);
       }
 
-      const parallaxX = motionState.cameraX * 0.28 + pointerX * 18;
-      const parallaxY = motionState.cameraY * 0.24 + pointerY * 14;
+      const parallaxX = motionState.cameraX * 0.28 + motionState.selfLeadX * 0.92;
+      const parallaxY = motionState.cameraY * 0.24 + motionState.selfLeadY * 0.88;
 
       context.clearRect(0, 0, width, height);
 
@@ -562,6 +601,10 @@ export default function UniverseCanvas({
   const handleStarClick = (star: VisualStar, event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
+    if (dragStateRef.current.suppressClickUntil > performance.now()) {
+      return;
+    }
+
     if (star.isUser) {
       onUserStarClick(star);
       return;
@@ -654,7 +697,24 @@ export default function UniverseCanvas({
   });
 
   return (
-    <div className="absolute inset-0" onClick={() => setActiveStar(null)}>
+    <div
+      className="absolute inset-0 touch-none"
+      onClick={() => {
+        if (dragStateRef.current.suppressClickUntil > performance.now()) {
+          return;
+        }
+
+        setActiveStar(null);
+      }}
+      onPointerDown={(event) => {
+        dragStateRef.current.active = true;
+        dragStateRef.current.pointerId = event.pointerId;
+        dragStateRef.current.lastX = event.clientX;
+        dragStateRef.current.lastY = event.clientY;
+        dragStateRef.current.draggedDistance = 0;
+        dragInputRef.current = { x: 0, y: 0 };
+      }}
+    >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full opacity-95" />
 
       <div className="absolute inset-0">
