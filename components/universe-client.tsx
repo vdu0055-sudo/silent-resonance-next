@@ -15,7 +15,11 @@ import {
   type UniverseStar,
   upsertMyStar,
 } from '../lib/silent-resonance';
-import { mapUniverseStarsToScene, type VisualStar } from '../lib/universe-visuals';
+import {
+  mapUniverseStarsToScene,
+  selectVisibleSceneStars,
+  type VisualStar,
+} from '../lib/universe-visuals';
 import CreationFlow from './creation-flow';
 import Hero from './hero';
 import UniverseCanvas from './universe-canvas';
@@ -44,6 +48,10 @@ export default function UniverseClient() {
   const sceneStars = useMemo(
     () => mapUniverseStarsToScene(stars, identity?.starId ?? null),
     [identity?.starId, stars],
+  );
+  const visibleStars = useMemo(
+    () => selectVisibleSceneStars(sceneStars, identity?.starId ?? null),
+    [identity?.starId, sceneStars],
   );
   const myStar = sceneStars.find((star) => star.isUser) ?? null;
 
@@ -261,7 +269,7 @@ export default function UniverseClient() {
       <div className="absolute inset-0 backdrop-blur-[1px]" />
 
       <UniverseCanvas
-        stars={sceneStars}
+        stars={visibleStars}
         onResonanceSent={handleResonanceSent}
         onUserStarClick={handleUserStarEdit}
         externalResonance={incomingResonance}

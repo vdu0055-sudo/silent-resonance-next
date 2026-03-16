@@ -41,6 +41,8 @@ export type VisualStar = {
   color: string;
 };
 
+const MAX_VISIBLE_STARS = 3;
+
 export const VISUAL_FREQUENCIES: FrequencyVisual[] = [
   {
     id: 'dormant',
@@ -385,4 +387,20 @@ export function mapUniverseStarsToScene(stars: UniverseStar[], myStarId: string 
       color: star.color,
     } satisfies VisualStar;
   });
+}
+
+export function selectVisibleSceneStars(stars: VisualStar[], myStarId: string | null) {
+  if (!stars.length) {
+    return [];
+  }
+
+  const userStar = myStarId ? stars.find((star) => star.id === myStarId) ?? null : null;
+
+  if (!userStar) {
+    return stars.slice(0, MAX_VISIBLE_STARS);
+  }
+
+  const remoteStars = stars.filter((star) => star.id !== userStar.id);
+
+  return [userStar, ...remoteStars.slice(0, MAX_VISIBLE_STARS - 1)];
 }

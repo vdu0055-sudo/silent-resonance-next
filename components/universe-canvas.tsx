@@ -42,8 +42,27 @@ type ResonanceWave = {
 
 type CSSVariables = CSSProperties & Record<string, string | number>;
 
+type MotionState = {
+  viewportWidth: number;
+  viewportHeight: number;
+  cameraX: number;
+  cameraY: number;
+  selfLeadX: number;
+  selfLeadY: number;
+};
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function wrapWithinRange(value: number, min: number, max: number) {
+  const range = max - min;
+
+  if (range <= 0) {
+    return min;
+  }
+
+  return ((((value - min) % range) + range) % range) + min;
 }
 
 function buildElectroLinePath(startX: number, endX: number, amplitude: number) {
@@ -175,11 +194,29 @@ export default function UniverseCanvas({
   const starRefs = useRef(new Map<string, HTMLButtonElement>());
   const resonanceTimeoutRef = useRef<number | null>(null);
   const waveSequenceRef = useRef(0);
+  const motionRef = useRef({
+    travelX: 0,
+    travelY: 0,
+    velocityX: 0,
+    velocityY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    selfLeadX: 0,
+    selfLeadY: 0,
+  });
   const [hoveredStar, setHoveredStar] = useState<VisualStar | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [activeStar, setActiveStar] = useState<VisualStar | null>(null);
   const [actionPosition, setActionPosition] = useState({ x: 0, y: 0 });
   const [resonanceWave, setResonanceWave] = useState<ResonanceWave | null>(null);
+  const [motion, setMotion] = useState<MotionState>({
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    cameraX: 0,
+    cameraY: 0,
+    selfLeadX: 0,
+    selfLeadY: 0,
+  });
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -189,8 +226,17 @@ export default function UniverseCanvas({
       };
     };
 
+    const handlePointerLeave = () => {
+      pointerRef.current = { x: 0.5, y: 0.5 };
+    };
+
     window.addEventListener('pointermove', handlePointerMove);
-    return () => window.removeEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerleave', handlePointerLeave);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerleave', handlePointerLeave);
+    };
   }, []);
 
   useEffect(() => {
@@ -205,6 +251,7 @@ export default function UniverseCanvas({
     }
 
     let animationFrameId = 0;
+    let previousTime = 0;
     const points = Array.from({ length: 150 }, () => ({
       x: Math.random(),
       y: Math.random(),
@@ -259,21 +306,43 @@ export default function UniverseCanvas({
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      setMotion((current) => ({
+        ...current,
+        viewportWidth: width,
+        viewportHeight: height,
+      }));
     };
 
     const render = (time: number) => {
       const width = window.innerWidth;
       const height = window.innerHeight;
-      const pointerX = (pointerRef.current.x - 0.5) * 28;
-      const pointerY = (pointerRef.current.y - 0.5) * 20;
+      const delta = previousTime ? Math.min(32, time - previousTime) : 16.7;
+      previousTime = time;
+      const pointerX = (pointerRef.current.x - 0.5) * 2;
+      const pointerY = (pointerRef.current.y - 0.5) * 2;
+      const motionState = motionRef.current;
+
+      motionState.velocityX =
+        motionState.velocityX * Math.pow(0.9, delta / 16.7) + pointerX * delta * 0.015;
+      motionState.velocityY =
+        motionState.velocityY * Math.pow(0.9, delta / 16.7) + pointerY * delta * 0.013;
+      motionState.travelX += motionState.velocityX;
+      motionState.travelY += motionState.velocityY;
+      motionState.cameraX += (motionState.travelX - motionState.cameraX) * 0.07;
+      motionState.cameraY += (motionState.travelY - motionState.cameraY) * 0.07;
+      motionState.selfLeadX += (pointerX * 18 - motionState.selfLeadX) * 0.16;
+      motionState.selfLeadY += (pointerY * 16 - motionState.selfLeadY) * 0.16;
+
+      const parallaxX = motionState.cameraX * 0.28 + pointerX * 18;
+      const parallaxY = motionState.cameraY * 0.24 + pointerY * 14;
 
       context.clearRect(0, 0, width, height);
 
       currents.forEach((current, index) => {
         context.save();
         context.translate(
-          current.x * width + pointerX * (0.12 + index * 0.04),
-          current.y * height + pointerY * (0.08 + index * 0.04),
+          current.x * width + parallaxX * (0.12 + index * 0.04),
+          current.y * height + parallaxY * (0.08 + index * 0.04),
         );
         context.rotate(current.tilt + Math.sin(time * current.speed + index) * 0.06);
         drawEllipseGlow(0, 0, current.radiusX, current.radiusY, `rgba(${current.color}, ${current.alpha})`);
@@ -283,8 +352,8 @@ export default function UniverseCanvas({
       haze.forEach((cloud, index) => {
         context.save();
         context.translate(
-          cloud.x * width + pointerX * (0.18 + index * 0.03),
-          cloud.y * height + pointerY * (0.14 + index * 0.02),
+          cloud.x * width + parallaxX * (0.18 + index * 0.03),
+          cloud.y * height + parallaxY * (0.14 + index * 0.02),
         );
         context.rotate(cloud.tilt + Math.sin(time * cloud.speed + index) * 0.08);
         drawEllipseGlow(
@@ -298,8 +367,8 @@ export default function UniverseCanvas({
       });
 
       drawEllipseGlow(
-        width * 0.5 + pointerX * 0.2,
-        height * 0.36 + pointerY * 0.18,
+        width * 0.5 + parallaxX * 0.2,
+        height * 0.36 + parallaxY * 0.18,
         Math.min(width, height) * 0.38,
         Math.min(width, height) * 0.2,
         'rgba(130, 154, 194, 0.07)',
@@ -311,8 +380,16 @@ export default function UniverseCanvas({
         const alpha =
           point.alpha *
           (0.66 + (Math.sin(time * (0.00022 + point.depth * 0.0001) + point.phase) + 1) * 0.22);
-        const x = point.x * width + pointerX * point.depth * 0.25;
-        const y = point.y * height + pointerY * point.depth * 0.18;
+        const x = wrapWithinRange(
+          point.x * width + parallaxX * point.depth * 0.85,
+          0,
+          width,
+        );
+        const y = wrapWithinRange(
+          point.y * height + parallaxY * point.depth * 0.72,
+          0,
+          height,
+        );
 
         if (point.radius > 1.1) {
           const glow = context.createRadialGradient(x, y, 0, x, y, point.radius * 8);
@@ -328,6 +405,15 @@ export default function UniverseCanvas({
         context.fillStyle = `rgba(223, 232, 247, ${alpha})`;
         context.arc(x, y, point.radius, 0, Math.PI * 2);
         context.fill();
+      });
+
+      setMotion({
+        viewportWidth: width,
+        viewportHeight: height,
+        cameraX: motionState.cameraX,
+        cameraY: motionState.cameraY,
+        selfLeadX: motionState.selfLeadX,
+        selfLeadY: motionState.selfLeadY,
       });
 
       animationFrameId = window.requestAnimationFrame(render);
@@ -360,6 +446,16 @@ export default function UniverseCanvas({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (activeStar && !stars.some((star) => star.id === activeStar.id)) {
+      setActiveStar(null);
+    }
+
+    if (hoveredStar && !stars.some((star) => star.id === hoveredStar.id)) {
+      setHoveredStar(null);
+    }
+  }, [activeStar, hoveredStar, stars]);
 
   const getStarCenter = useCallback((starId: string) => {
     const node = starRefs.current.get(starId);
@@ -496,12 +592,55 @@ export default function UniverseCanvas({
     }
   }, [externalResonance, onExternalResonancePlayed, startResonanceWave, stars]);
 
+  const renderStars = stars.map((star, index) => {
+    if (star.isUser) {
+      return {
+        star,
+        left: '50%',
+        top: '50%',
+        pilotOffsetX: motion.selfLeadX,
+        pilotOffsetY: motion.selfLeadY,
+      };
+    }
+
+    const width = motion.viewportWidth;
+    const height = motion.viewportHeight;
+    const minX = width * 0.14;
+    const maxX = width * 0.86;
+    const minY = height * 0.16;
+    const maxY = height * 0.84;
+    const baseX = minX + ((star.position.x - 8) / 84) * (maxX - minX);
+    const baseY = minY + ((star.position.y - 10) / 78) * (maxY - minY);
+    const travelFactor = 0.34 + index * 0.11;
+    let x = wrapWithinRange(baseX - motion.cameraX * travelFactor, minX, maxX);
+    let y = wrapWithinRange(baseY - motion.cameraY * (travelFactor * 0.92), minY, maxY);
+    const dx = x - width / 2;
+    const dy = y - height / 2;
+    const minDistance = Math.min(width, height) * 0.19;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance < minDistance) {
+      const fallbackAngle = index % 2 === 0 ? -0.72 : 0.88;
+      const angle = distance > 0 ? Math.atan2(dy, dx) : fallbackAngle;
+      x = width / 2 + Math.cos(angle) * minDistance;
+      y = height / 2 + Math.sin(angle) * minDistance;
+    }
+
+    return {
+      star,
+      left: `${(x / width) * 100}%`,
+      top: `${(y / height) * 100}%`,
+      pilotOffsetX: 0,
+      pilotOffsetY: 0,
+    };
+  });
+
   return (
     <div className="absolute inset-0" onClick={() => setActiveStar(null)}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full opacity-95" />
 
       <div className="absolute inset-0">
-        {stars.map((star) => {
+        {renderStars.map(({ star, left, top, pilotOffsetX, pilotOffsetY }) => {
           const appearance = buildStarAppearance(star);
           const coreSize = Math.max(7, star.size * 0.76);
           const shellSize = Math.max(16, star.size * 1.55);
@@ -510,8 +649,8 @@ export default function UniverseCanvas({
           const userShellSize = Math.max(58, star.size * 4.1);
 
           const style = {
-            left: `${star.position.x}%`,
-            top: `${star.position.y}%`,
+            left,
+            top,
             width: `${auraSize}px`,
             height: `${auraSize}px`,
             '--star-color': appearance.primary.color,
@@ -535,6 +674,8 @@ export default function UniverseCanvas({
             '--drift-start-y': `${Math.round(star.drift.y * -0.45)}px`,
             '--drift-delay': star.delay,
             '--drift-duration': `${(30 + star.size * 0.9) * appearance.driftFactor}s`,
+            '--pilot-offset-x': `${pilotOffsetX}px`,
+            '--pilot-offset-y': `${pilotOffsetY}px`,
           } as CSSVariables;
 
           return (
